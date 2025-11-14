@@ -14,14 +14,15 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 from steve import STEVE
-from data import GlobVideoDataset
+from data import GlobVideoDataset, GlobVideoDatasetWithMasks
 from utils import cosine_anneal, linear_warmup
+from ari import evaluate_ari
 
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed', type=int, default=0)
-parser.add_argument('--batch_size', type=int, default=24)
+parser.add_argument('--batch_size', type=int, default=2)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--image_size', type=int, default=128)
 parser.add_argument('--img_channels', type=int, default=3)
@@ -30,6 +31,7 @@ parser.add_argument('--ep_len', type=int, default=3)
 parser.add_argument('--checkpoint_path', default='checkpoint.pt.tar')
 parser.add_argument('--data_path', default='data/*')
 parser.add_argument('--log_path', default='logs/')
+parser.add_argument('--dataset_type', default='movi-solid')
 
 parser.add_argument('--lr_dvae', type=float, default=3e-4)
 parser.add_argument('--lr_enc', type=float, default=1e-4)
@@ -72,8 +74,26 @@ log_dir = os.path.join(args.log_path, datetime.today().isoformat())
 writer = SummaryWriter(log_dir)
 writer.add_text('hparams', arg_str)
 
-train_dataset = GlobVideoDataset(root=args.data_path, phase='train', img_size=args.image_size, ep_len=args.ep_len, img_glob='????????_image.png')
-val_dataset = GlobVideoDataset(root=args.data_path, phase='val', img_size=args.image_size, ep_len=args.ep_len, img_glob='????????_image.png')
+train_path = os.path.join(args.data_path, 'train', '*')
+val_path = os.path.join(args.data_path, 'val', '*')
+
+ds_type = args.dataset_type
+if ds_type in ('movi-flow'):
+    img_glob = 'movi_?_????_rgb_???.jpg'
+    mask_glob = 'movi_?_????_ano_???.jpg'
+else:
+    img_glob = '????????_image.png'
+    mask_glob = '????????_mask_??.png'
+
+train_dataset = GlobVideoDataset(
+    root=train_path, phase='', 
+    img_size=args.image_size, ep_len=args.ep_len, 
+    img_glob=img_glob)
+
+val_dataset = GlobVideoDatasetWithMasks(
+    root=val_path, img_size=args.image_size,
+    ep_len=args.ep_len, img_glob=img_glob, mask_glob=mask_glob
+)
 
 loader_kwargs = {
     'batch_size': args.batch_size,
@@ -207,18 +227,31 @@ for epoch in range(start_epoch, args.epochs):
     with torch.no_grad():
         gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[:8])
         frames = visualize(video, recon, gen_video, attns, N=8)
-        writer.add_video('TRAIN_recons/epoch={:03}'.format(epoch+1), frames)
+        writer.add_video('TRAIN_recons', frames, epoch+1)
     
     with torch.no_grad():
         model.eval()
 
         val_cross_entropy = 0.
         val_mse = 0.
+        aris = 0.
+        fgaris = 0.
 
-        for batch, video in enumerate(val_loader):
+        for batch, (video, true_masks) in enumerate(val_loader):
             video = video.cuda()
 
             (recon, cross_entropy, mse, attns) = model(video, tau, args.hard)
+            _, _, pred_masks = model.module.encode(video)
+
+            #compute ari
+            ari_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2),
+                                        pred_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2))
+            aris += ari_b
+
+            # compute fg-ari by omit the BG segment i.e. the 0-th segment from the true masks as follows.
+            fgari_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5)[:, 1:].flatten(start_dim=2),
+                                        pred_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2))
+            fgaris += fgari_b
 
             if args.use_dp:
                 mse = mse.mean()
@@ -229,14 +262,20 @@ for epoch in range(start_epoch, args.epochs):
 
         val_cross_entropy /= (val_epoch_size)
         val_mse /= (val_epoch_size)
+        
+        aris /= (val_epoch_size)
+        fgaris /= (val_epoch_size)
 
         val_loss = val_mse + val_cross_entropy
 
         writer.add_scalar('VAL/loss', val_loss, epoch+1)
-        writer.add_scalar('VAL/cross_entropy', val_cross_entropy, epoch + 1)
+        writer.add_scalar('VAL/cross_entropy', val_cross_entropy, epoch+1)
         writer.add_scalar('VAL/mse', val_mse, epoch+1)
 
-        print('====> Epoch: {:3} \t Loss = {:F}'.format(epoch+1, val_loss))
+        writer.add_scalar('VAL/ari', aris, epoch+1)
+        writer.add_scalar('VAL/fg_ari', fgaris, epoch+1)
+
+        print('====> Epoch: {:3} \t Loss: {:F} \t Ari: {:F} \t FG-Ari: {:F}'.format(epoch+1, val_loss, aris, fgaris))
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -250,7 +289,7 @@ for epoch in range(start_epoch, args.epochs):
             if 50 <= epoch:
                 gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[:8])
                 frames = visualize(video, recon, gen_video, attns, N=8)
-                writer.add_video('VAL_recons/epoch={:03}'.format(epoch + 1), frames)
+                writer.add_video('VAL_recons', frames, epoch + 1)
 
         writer.add_scalar('VAL/best_loss', best_val_loss, epoch+1)
 
