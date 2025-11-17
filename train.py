@@ -172,7 +172,7 @@ for epoch in range(start_epoch, args.epochs):
     global_step = epoch * train_epoch_size
 
     for batch, video in enumerate(train_loader):
-        global_step += batch
+        global_step += 1
         if global_step > args.steps:
             writer.close()
             exit()
