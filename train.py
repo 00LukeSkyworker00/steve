@@ -41,7 +41,7 @@ parser.add_argument('--lr_dec', type=float, default=3e-4)
 parser.add_argument('--lr_warmup_steps', type=int, default=30000)
 parser.add_argument('--lr_half_life', type=int, default=250000)
 parser.add_argument('--clip', type=float, default=0.05)
-parser.add_argument('--epochs', type=int, default=200)
+parser.add_argument('--epochs', type=int, default=500)
 parser.add_argument('--steps', type=int, default=200000)
 
 parser.add_argument('--num_iterations', type=int, default=2)
@@ -167,15 +167,19 @@ def visualize(video:torch.Tensor, recon_dvae:torch.Tensor, recon_tf:torch.Tensor
 
     return frames
 
+stop_signal = False
 for epoch in range(start_epoch, args.epochs):
     model.train()
     global_step = epoch * train_epoch_size
 
+    if stop_signal:
+        break
+
     for batch, video in enumerate(train_loader):
         global_step += 1
         if global_step > args.steps:
-            writer.close()
-            exit()
+            stop_signal = True
+            break
 
         tau = cosine_anneal(
             global_step,
@@ -221,7 +225,6 @@ for epoch in range(start_epoch, args.epochs):
         optimizer.step()
         
         with torch.no_grad():
-            print(batch,log_interval)
             if batch % log_interval == 0:
                 print('Train Epoch: {:3} [{:5}/{:5}] \t Loss: {:F} \t MSE: {:F}'.format(
                       epoch+1, batch, train_epoch_size, loss.item(), mse.item()))
