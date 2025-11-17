@@ -18,11 +18,12 @@ from data import GlobVideoDataset, GlobVideoDatasetWithMasks
 from utils import cosine_anneal, linear_warmup
 from ari import evaluate_ari
 
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed', type=int, default=0)
-parser.add_argument('--batch_size', type=int, default=2)
+parser.add_argument('--batch_size', type=int, default=24)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--image_size', type=int, default=128)
 parser.add_argument('--img_channels', type=int, default=3)
@@ -32,6 +33,7 @@ parser.add_argument('--checkpoint_path', default='checkpoint.pt.tar')
 parser.add_argument('--data_path', default='data/*')
 parser.add_argument('--log_path', default='logs/')
 parser.add_argument('--dataset_type', default='movi-solid')
+parser.add_argument('--log_samples', type=int, default=4)
 
 parser.add_argument('--lr_dvae', type=float, default=3e-4)
 parser.add_argument('--lr_enc', type=float, default=1e-4)
@@ -39,7 +41,7 @@ parser.add_argument('--lr_dec', type=float, default=3e-4)
 parser.add_argument('--lr_warmup_steps', type=int, default=30000)
 parser.add_argument('--lr_half_life', type=int, default=250000)
 parser.add_argument('--clip', type=float, default=0.05)
-parser.add_argument('--epochs', type=int, default=500)
+parser.add_argument('--epochs', type=int, default=200)
 parser.add_argument('--steps', type=int, default=200000)
 
 parser.add_argument('--num_iterations', type=int, default=2)
@@ -97,19 +99,22 @@ val_dataset = GlobVideoDatasetWithMasks(
 
 loader_kwargs = {
     'batch_size': args.batch_size,
-    'shuffle': True,
     'num_workers': args.num_workers,
     'pin_memory': True,
     'drop_last': True,
 }
 
-train_loader = DataLoader(train_dataset, sampler=None, **loader_kwargs)
-val_loader = DataLoader(val_dataset, sampler=None, **loader_kwargs)
+train_loader = DataLoader(train_dataset, sampler=None, shuffle=True, **loader_kwargs)
+val_loader = DataLoader(val_dataset, sampler=None, shuffle=False, **loader_kwargs)
 
 train_epoch_size = len(train_loader)
 val_epoch_size = len(val_loader)
 
-log_interval = train_epoch_size // 5
+log_interval = max(train_epoch_size // 5, 1)
+log_samples = 4
+seg_cmap = plt.cm.tab20(torch.linspace(0, 1, args.num_slots))[:, :3]
+seg_cmap = torch.from_numpy(seg_cmap).cuda()
+seg_cmap[0] *= 0
 
 model = STEVE(args)
 
@@ -138,34 +143,39 @@ optimizer = Adam([
 if checkpoint is not None:
     optimizer.load_state_dict(checkpoint['optimizer'])
 
+def visualize(video:torch.Tensor, recon_dvae:torch.Tensor, recon_tf:torch.Tensor, 
+              seg_gt:torch.Tensor, seg_pred:torch.Tensor, attns:torch.Tensor, N=8):
+    _, T, C, H, W = video.size()
 
-def visualize(video, recon_dvae, recon_tf, attns, N=8):
-    B, T, C, H, W = video.size()
+    video = video[:N].unsqueeze(2)  # (N, T, 1, C, H, W)
+    recon_dvae = recon_dvae[:N].unsqueeze(2)  # (N, T, 1, C, H, W)
+    recon_tf = recon_tf[:N].unsqueeze(2)  # (N, T, 1, C, H, W)
+    seg_gt = seg_gt[:N].unsqueeze(2)  # (N, T, 1, C, H, W)
+    seg_pred = seg_pred[:N].unsqueeze(2)  # (N, T, 1, C, H, W)
+    attns = attns[:N]  # (N, T, S, C, H, W)
 
-    frames = []
-    for t in range(T):
-        video_t = video[:N, t, None, :, :, :]
-        recon_dvae_t = recon_dvae[:N, t, None, :, :, :]
-        recon_tf_t = recon_tf[:N, t, None, :, :, :]
-        attns_t = attns[:N, t, :, :, :, :]
+    num_slot_modulo = attns.shape[2] % 5
+    if num_slot_modulo != 0:
+        empty_attns = torch.ones_like(attns[:,:,:1].repeat(1,1,5-num_slot_modulo,1,1,1))
+        attns = torch.cat([attns, empty_attns*0.5], dim=2)
 
-        # tile
-        tiles = torch.cat((video_t, recon_dvae_t, recon_tf_t, attns_t), dim=1).flatten(end_dim=1)
-
-        # grid
-        frame = vutils.make_grid(tiles, nrow=(args.num_slots + 3), pad_value=0.8)
-        frames += [frame]
-
-    frames = torch.stack(frames, dim=0).unsqueeze(0)
+    tiles = torch.cat((video, recon_dvae, recon_tf, seg_gt, seg_pred, attns), dim=2)  # (N, T, (S+5), C, H, W)
+    tiles = tiles.permute(0,2,1,3,4,5).reshape(-1,T*C,H,W)  # (N*(S+5), T*C, H, W)
+    
+    frames = vutils.make_grid(tiles, nrow=(5), pad_value=0.8)  # (T*C, H', W')
+    frames = frames.reshape(T, C, frames.shape[-2], frames.shape[-1]).unsqueeze(0)  # (1, T*C, H', W')
 
     return frames
 
-
 for epoch in range(start_epoch, args.epochs):
     model.train()
-    
+    global_step = epoch * train_epoch_size
+
     for batch, video in enumerate(train_loader):
-        global_step = epoch * train_epoch_size + batch
+        global_step += batch
+        if global_step > args.steps:
+            writer.close()
+            exit()
 
         tau = cosine_anneal(
             global_step,
@@ -211,6 +221,7 @@ for epoch in range(start_epoch, args.epochs):
         optimizer.step()
         
         with torch.no_grad():
+            print(batch,log_interval)
             if batch % log_interval == 0:
                 print('Train Epoch: {:3} [{:5}/{:5}] \t Loss: {:F} \t MSE: {:F}'.format(
                       epoch+1, batch, train_epoch_size, loss.item(), mse.item()))
@@ -224,10 +235,6 @@ for epoch in range(start_epoch, args.epochs):
                 writer.add_scalar('TRAIN/lr_enc', optimizer.param_groups[1]['lr'], global_step)
                 writer.add_scalar('TRAIN/lr_dec', optimizer.param_groups[2]['lr'], global_step)
 
-    with torch.no_grad():
-        gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[:8])
-        frames = visualize(video, recon, gen_video, attns, N=8)
-        writer.add_video('TRAIN_recons', frames, epoch+1)
     
     with torch.no_grad():
         model.eval()
@@ -283,13 +290,23 @@ for epoch in range(start_epoch, args.epochs):
 
             torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), os.path.join(log_dir, 'best_model.pt'))
 
-            if global_step < args.steps:
-                torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), os.path.join(log_dir, f'best_model_until_{args.steps}_steps.pt'))
-
-            if 50 <= epoch:
-                gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[:8])
-                frames = visualize(video, recon, gen_video, attns, N=8)
-                writer.add_video('VAL_recons', frames, epoch + 1)
+            # if global_step < args.steps:
+            #     torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), os.path.join(log_dir, f'best_model_until_{args.steps}_steps.pt'))
+            
+            def viz_seg(attns: torch.Tensor):
+                """                
+                Args:
+                    attns (torch.Tensor): Segmentation map shaped (b,t,s,1,h,w)
+                """
+                obj_ids = torch.argmax(attns[:,:,:,0], dim=2)  # (b,t,h,w)
+                colored_seg = seg_cmap[obj_ids]  # (b,t,h,w,3)
+                return colored_seg.permute(0,1,4,2,3)
+            
+            gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[::8][:log_samples])
+            seg_gt = viz_seg(true_masks[::8][:log_samples].cuda())
+            seg_pred = viz_seg(pred_masks[::8][:log_samples])
+            frames = visualize(video[::8], recon[::8], gen_video, seg_gt, seg_pred, attns[::8], N=log_samples)
+            writer.add_video('VAL_recons', frames, epoch + 1)
 
         writer.add_scalar('VAL/best_loss', best_val_loss, epoch+1)
 
