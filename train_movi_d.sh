@@ -11,3 +11,4 @@ python train.py \
     --data_path $DATA_DIR/movi/d \
     --log_path $OUT_DIR/movi/d \
     --num_slots 15\
+    --steps 200000\
