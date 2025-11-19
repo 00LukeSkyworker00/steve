@@ -19,6 +19,7 @@ from utils import cosine_anneal, linear_warmup
 from ari import evaluate_ari
 
 import matplotlib.pyplot as plt
+import wandb
 
 parser = argparse.ArgumentParser()
 
@@ -31,8 +32,8 @@ parser.add_argument('--ep_len', type=int, default=3)
 
 parser.add_argument('--checkpoint_path', default='checkpoint.pt.tar')
 parser.add_argument('--data_path', default='data/*')
-parser.add_argument('--log_path', default='logs/')
-parser.add_argument('--dataset_type', default='movi-solid')
+parser.add_argument('--out_path', default='results/')
+parser.add_argument('--dataset', default='movi_solid')
 parser.add_argument('--log_samples', type=int, default=4)
 
 parser.add_argument('--lr_dvae', type=float, default=3e-4)
@@ -70,16 +71,32 @@ args = parser.parse_args()
 
 torch.manual_seed(args.seed)
 
+ds_type = args.dataset
+args_dict = vars(args)
+out_dir = os.path.join(args.out_path, datetime.today().isoformat())
+os.makedirs(out_dir, exist_ok=True)
+
+# Setup WanDB
+wandb.login()
+run = wandb.init(
+    project=f'steve_pretrain_{ds_type}',
+    config=args_dict,
+    name=datetime.today().strftime("%y%m%d_%H%M%S")
+)
+# Define custom step axes:
+run.define_metric("TRAIN/*", step_metric="train_step", hidden=True)
+run.define_metric("VAL/*", step_metric="val_step", hidden=True)
+
+# Setup Tensorboard
 arg_str_list = ['{}={}'.format(k, v) for k, v in vars(args).items()]
 arg_str = '__'.join(arg_str_list)
-log_dir = os.path.join(args.log_path, datetime.today().isoformat())
+log_dir = os.path.join(out_dir, 'tensorboard')
 writer = SummaryWriter(log_dir)
 writer.add_text('hparams', arg_str)
 
 train_path = os.path.join(args.data_path, 'train', '*')
 val_path = os.path.join(args.data_path, 'val', '*')
 
-ds_type = args.dataset_type
 if ds_type in ('movi-flow'):
     img_glob = 'movi_?_????_rgb_???.jpg'
     mask_glob = 'movi_?_????_ano_???.jpg'
@@ -229,14 +246,24 @@ for epoch in range(start_epoch, args.epochs):
                 print('Train Epoch: {:3} [{:5}/{:5}] \t Loss: {:F} \t MSE: {:F}'.format(
                       epoch+1, batch, train_epoch_size, loss.item(), mse.item()))
                 
+                run.log({
+                    "TRAIN/loss": loss.item(),
+                    "TRAIN/cross_entropy": cross_entropy.item(),
+                    "TRAIN/mse": mse.item(),
+                    "TRAIN/tau": tau,
+                    "TRAIN/lr_dvae": optimizer.param_groups[0]['lr'],
+                    "TRAIN/lr_enc": optimizer.param_groups[1]['lr'],
+                    "TRAIN/lr_dec": optimizer.param_groups[2]['lr'],
+                    "train_step": global_step,
+                })
                 writer.add_scalar('TRAIN/loss', loss.item(), global_step)
                 writer.add_scalar('TRAIN/cross_entropy', cross_entropy.item(), global_step)
                 writer.add_scalar('TRAIN/mse', mse.item(), global_step)
-
                 writer.add_scalar('TRAIN/tau', tau, global_step)
                 writer.add_scalar('TRAIN/lr_dvae', optimizer.param_groups[0]['lr'], global_step)
                 writer.add_scalar('TRAIN/lr_enc', optimizer.param_groups[1]['lr'], global_step)
                 writer.add_scalar('TRAIN/lr_dec', optimizer.param_groups[2]['lr'], global_step)
+
 
     
     with torch.no_grad():
@@ -277,41 +304,50 @@ for epoch in range(start_epoch, args.epochs):
         fgaris /= (val_epoch_size)
 
         val_loss = val_mse + val_cross_entropy
-
-        writer.add_scalar('VAL/loss', val_loss, epoch+1)
-        writer.add_scalar('VAL/cross_entropy', val_cross_entropy, epoch+1)
-        writer.add_scalar('VAL/mse', val_mse, epoch+1)
-
-        writer.add_scalar('VAL/ari', aris, epoch+1)
-        writer.add_scalar('VAL/fg_ari', fgaris, epoch+1)
+            
+        def viz_seg(attns: torch.Tensor):
+            """                
+            Args:
+                attns (torch.Tensor): Segmentation map shaped (b,t,s,1,h,w)
+            """
+            obj_ids = torch.argmax(attns[:,:,:,0], dim=2)  # (b,t,h,w)
+            colored_seg = seg_cmap[obj_ids]  # (b,t,h,w,3)
+            return colored_seg.permute(0,1,4,2,3)
+            
+        gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[::8][:log_samples])
+        seg_gt = viz_seg(true_masks[::8][:log_samples].cuda())
+        seg_pred = viz_seg(pred_masks[::8][:log_samples])
+        frames = visualize(video[::8], recon[::8], gen_video, seg_gt, seg_pred, attns[::8], N=log_samples)
 
         print('====> Epoch: {:3} \t Loss: {:F} \t Ari: {:F} \t FG-Ari: {:F}'.format(epoch+1, val_loss, aris, fgaris))
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch + 1
-
-            torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), os.path.join(log_dir, 'best_model.pt'))
+            best_pth =os.path.join(out_dir, 'best_model.pt')
+            torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), best_pth)
 
             # if global_step < args.steps:
             #     torch.save(model.module.state_dict() if args.use_dp else model.state_dict(), os.path.join(log_dir, f'best_model_until_{args.steps}_steps.pt'))
-            
-            def viz_seg(attns: torch.Tensor):
-                """                
-                Args:
-                    attns (torch.Tensor): Segmentation map shaped (b,t,s,1,h,w)
-                """
-                obj_ids = torch.argmax(attns[:,:,:,0], dim=2)  # (b,t,h,w)
-                colored_seg = seg_cmap[obj_ids]  # (b,t,h,w,3)
-                return colored_seg.permute(0,1,4,2,3)
-            
-            gen_video = (model.module if args.use_dp else model).reconstruct_autoregressive(video[::8][:log_samples])
-            seg_gt = viz_seg(true_masks[::8][:log_samples].cuda())
-            seg_pred = viz_seg(pred_masks[::8][:log_samples])
-            frames = visualize(video[::8], recon[::8], gen_video, seg_gt, seg_pred, attns[::8], N=log_samples)
-            writer.add_video('VAL_recons', frames, epoch + 1)
 
+        run.log({
+            "VAL/loss": val_loss,
+            "VAL/cross_entropy": val_cross_entropy,
+            "VAL/mse": val_mse,
+            "VAL/ari": aris,
+            "VAL/ari_fg": fgaris,
+            "VAL/best_loss": best_val_loss,
+            "VAL/recons": wandb.Video(frames.cpu()*255.0, fps=8, format="mp4"),
+            "val_step": epoch+1,
+        })
+
+        writer.add_scalar('VAL/loss', val_loss, epoch+1)
+        writer.add_scalar('VAL/cross_entropy', val_cross_entropy, epoch+1)
+        writer.add_scalar('VAL/mse', val_mse, epoch+1)
+        writer.add_scalar('VAL/ari', aris, epoch+1)
+        writer.add_scalar('VAL/ari_fg', fgaris, epoch+1)
         writer.add_scalar('VAL/best_loss', best_val_loss, epoch+1)
+        writer.add_video('Recons/val', frames, epoch+1)
 
         checkpoint = {
             'epoch': epoch + 1,
@@ -320,9 +356,26 @@ for epoch in range(start_epoch, args.epochs):
             'model': model.module.state_dict() if args.use_dp else model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }
+        ckpt_pth = os.path.join(out_dir, 'checkpoint.pt.tar')
+        torch.save(checkpoint, ckpt_pth)
 
-        torch.save(checkpoint, os.path.join(log_dir, 'checkpoint.pt.tar'))
 
         print('====> Best Loss = {:F} @ Epoch {}'.format(best_val_loss, best_epoch))
 
+artifact_best = wandb.Artifact("best", type="model")
+artifact_best.add_file(best_pth)
+artifact_best.ttl = None
+run.log_artifact(artifact_best)
+
+artifact_ckpt = wandb.Artifact("ckpt", type="checkpoint")
+artifact_ckpt.add_file(ckpt_pth)
+artifact_ckpt.ttl = None
+run.log_artifact(artifact_ckpt)
+
+artifact_log = wandb.Artifact("tensorboard", type="log")
+artifact_log.add_dir(log_dir)
+artifact_log.ttl = None
+run.log_artifact(artifact_log)
+
 writer.close()
+run.finish()
