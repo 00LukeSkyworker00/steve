@@ -5,16 +5,10 @@ OUT_DIR=/home/skyworker0/workspace/uvos/result
 # Install packages
 pip install moviepy
 pip install wandb
-<<<<<<< Updated upstream
-
-# Setup WanDB (put your api key in a txt file in root.)
-export WANDB_API_KEY=$(cat .wandb_key.txt)
-=======
 pip install --upgrade pydantic==2.7.0
 
 # Setup WanDB (put your api key in a txt file in root.)
 export WANDB_API_KEY=$(cat .wandb.txt)
->>>>>>> Stashed changes
 
 # Go to steve repo
 echo 'Enter STEVE repo...'
