@@ -19,7 +19,7 @@ echo 'Start pre-training STEVE on Movi-d'
 python -u train.py \
     --dataset movi_d \
     --data_path $DATA_DIR/movi/d \
-    --log_path $OUT_DIR/movi/d \
+    --out_path $OUT_DIR/movi/d \
     --num_slots 15 \
     --steps 200000 \
     --use_dp \

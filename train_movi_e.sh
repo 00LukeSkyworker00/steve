@@ -19,11 +19,7 @@ echo 'Start pre-training STEVE on Movi-e'
 python -u train.py \
     --dataset movi_e \
     --data_path $DATA_DIR/movi/e \
-<<<<<<< Updated upstream
-    --log_path $OUT_DIR/movi/e \
-=======
     --out_path $OUT_DIR/movi/e \
->>>>>>> Stashed changes
     --num_slots 15 \
     --steps 200000 \
     --use_dp \
