@@ -5,9 +5,16 @@ OUT_DIR=/home/skyworker0/workspace/uvos/result
 # Install packages
 pip install moviepy
 pip install wandb
+<<<<<<< Updated upstream
 
 # Setup WanDB (put your api key in a txt file in root.)
 export WANDB_API_KEY=$(cat .wandb_key.txt)
+=======
+pip install --upgrade pydantic==2.7.0
+
+# Setup WanDB (put your api key in a txt file in root.)
+export WANDB_API_KEY=$(cat .wandb.txt)
+>>>>>>> Stashed changes
 
 # Go to steve repo
 echo 'Enter STEVE repo...'
@@ -18,7 +25,11 @@ echo 'Start pre-training STEVE on Movi-e'
 python -u train.py \
     --dataset movi_e \
     --data_path $DATA_DIR/movi/e \
+<<<<<<< Updated upstream
     --log_path $OUT_DIR/movi/e \
+=======
+    --out_path $OUT_DIR/movi/e \
+>>>>>>> Stashed changes
     --num_slots 15 \
     --steps 200000 \
     --use_dp \
