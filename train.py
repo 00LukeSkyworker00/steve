@@ -127,9 +127,12 @@ val_loader = DataLoader(val_dataset, sampler=None, shuffle=False, **loader_kwarg
 train_epoch_size = len(train_loader)
 val_epoch_size = len(val_loader)
 
+val_sample = val_dataset[0]
+gt_num_slot = val_sample[1].shape[1]
+
 log_interval = max(train_epoch_size // 5, 1)
 log_samples = 4
-seg_cmap = plt.cm.tab20(torch.linspace(0, 1, args.num_slots))[:, :3]
+seg_cmap = plt.cm.tab20(torch.linspace(0, 1, gt_num_slot))[:, :3]
 seg_cmap = torch.from_numpy(seg_cmap).cuda()
 seg_cmap[0] *= 0
 
