@@ -20,6 +20,6 @@ python -u train.py \
     --dataset CaterTex \
     --data_path $DATA_DIR/catertex \
     --out_path $OUT_DIR/catertex \
-    --num_slots 15 \
-    --steps 200000 \
+    --num_slots 9 \
+    --steps 400000 \
     --use_dp \

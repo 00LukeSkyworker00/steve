@@ -20,6 +20,6 @@ python -u train.py \
     --dataset movi_solid \
     --data_path $DATA_DIR/movi/solid \
     --out_path $OUT_DIR/movi/solid \
-    --num_slots 15 \
+    --num_slots 12 \
     --steps 200000 \
     --use_dp \

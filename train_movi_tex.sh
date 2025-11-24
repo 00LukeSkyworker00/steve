@@ -20,6 +20,6 @@ python -u train.py \
     --dataset movi_tex \
     --data_path $DATA_DIR/movi/tex \
     --out_path $OUT_DIR/movi/tex \
-    --num_slots 15 \
+    --num_slots 12 \
     --steps 200000 \
     --use_dp \
