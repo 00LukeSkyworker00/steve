@@ -21,6 +21,9 @@ from ari import evaluate_ari
 import matplotlib.pyplot as plt
 import wandb
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--seed', type=int, default=0)
@@ -129,15 +132,18 @@ val_epoch_size = len(val_loader)
 
 val_sample = val_dataset[0]
 gt_num_slot = val_sample[1].shape[1]
+max_num_slot = max(args.num_slots, gt_num_slot)
 
 log_interval = max(train_epoch_size // 5, 1)
 log_samples = 4
-seg_cmap = plt.cm.tab20(torch.linspace(0, 1, gt_num_slot))[:, :3]
+seg_cmap = plt.cm.tab20(torch.linspace(0, 1, max_num_slot))[:, :3]
 seg_cmap = torch.from_numpy(seg_cmap).cuda()
 seg_cmap[0] *= 0
 
 model = STEVE(args)
-
+print('>>>>>> Model Status <<<<<<')
+print(f'Training STEVE on {ds_type} dataset, with {args.num_slots} slots and upto {args.steps} training iterations.')
+print('>>>>>> Training Begins <<<<<<')
 if os.path.isfile(args.checkpoint_path):
     checkpoint = torch.load(args.checkpoint_path, map_location='cpu')
     start_epoch = checkpoint['epoch']
