@@ -25,7 +25,7 @@ for dataset in c d e solid tex ; do
         --epochs 50 \
         --steps 100000000 \
         --use_dp \
-        --wandb_proj_sufix _pretrain_dvae \
+        --wandb_proj_sufix _dvae \
         --dvae_pretrain \
 
 # Pretrain dvae on CaterTex
@@ -38,5 +38,5 @@ python -u train.py \
     --epochs 50 \
     --steps 100000000 \
     --use_dp \
-    --wandb_proj_sufix _pretrain_dvae \
+    --wandb_proj_sufix _dvae \
     --dvae_pretrain \
