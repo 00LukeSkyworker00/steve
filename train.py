@@ -369,15 +369,17 @@ for epoch in range(start_epoch, args.epochs):
             if args.use_dp:
                 mse = mse.mean()
                 val_mse += mse.item()
-                val_mse /= (val_epoch_size)
-                val_loss += val_mse
                 if not args.dvae_pretrain:
                     cross_entropy = cross_entropy.mean()
                     val_cross_entropy += cross_entropy.item()
-                    val_cross_entropy /= (val_epoch_size)        
-                    aris /= (val_epoch_size)
-                    fgaris /= (val_epoch_size)
-                    val_loss += val_cross_entropy
+        
+        val_mse /= (val_epoch_size)
+        val_loss += val_mse
+        if not args.dvae_pretrain:
+            val_cross_entropy /= (val_epoch_size)        
+            aris /= (val_epoch_size)
+            fgaris /= (val_epoch_size)
+            val_loss += val_cross_entropy
 
         def viz_seg(attns: torch.Tensor):
             """                
