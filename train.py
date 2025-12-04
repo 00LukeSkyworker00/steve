@@ -108,12 +108,12 @@ else:
     mask_glob = '????????_mask_??.png'
 
 train_dataset = GlobVideoDataset(
-    root=train_path, phase='', 
+    root=train_path, phase='train', 
     img_size=args.image_size, ep_len=args.ep_len, 
     img_glob=img_glob)
 
 val_dataset = GlobVideoDatasetWithMasks(
-    root=val_path, img_size=args.image_size,
+    root=val_path, phase='val', img_size=args.image_size,
     ep_len=args.ep_len, img_glob=img_glob, mask_glob=mask_glob
 )
 
