@@ -149,7 +149,7 @@ print('>>>>>> Model Status <<<<<<')
 print(f'Training STEVE on {ds_type} dataset, with {args.num_slots} slots and upto {args.steps} training iterations.')
 
 # Load pretrained dVAE for second stage training
-dvae_dir = os.path.join(args.dvae_dir, args.dataset)
+dvae_dir = os.path.join(args.dvae_dir)
 dvae_checkpoint_path = os.path.join(dvae_dir, 'dvae_pretrained.pt')
 if os.path.isfile(dvae_checkpoint_path):
     args.dvae_pretrain = False
