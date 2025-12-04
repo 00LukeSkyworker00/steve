@@ -213,14 +213,17 @@ class STEVE(nn.Module):
         self.vocab_size = args.vocab_size
         self.d_model = args.d_model
 
+        self.dvae_pretrain:bool = args.dvae_pretrain
+
         # dvae
         self.dvae = dVAE(args.vocab_size, args.img_channels)
 
-        # encoder networks
-        self.steve_encoder = STEVEEncoder(args)
+        if not self.dvae_pretrain:
+            # encoder networks
+            self.steve_encoder = STEVEEncoder(args)
 
-        # decoder networks
-        self.steve_decoder = STEVEDecoder(args)
+            # decoder networks
+            self.steve_decoder = STEVEDecoder(args)
 
     def forward(self, video, tau, hard):
         B, T, C, H, W = video.size()
@@ -230,15 +233,21 @@ class STEVE(nn.Module):
         # dvae encode
         z_logits = F.log_softmax(self.dvae.encoder(video_flat), dim=1)       # B * T, vocab_size, H_enc, W_enc
         z_soft = gumbel_softmax(z_logits, tau, hard, dim=1)                  # B * T, vocab_size, H_enc, W_enc
+        
+        # dvae recon
+        dvae_recon = self.dvae.decoder(z_soft).reshape(B, T, C, H, W)               # B, T, C, H, W
+        dvae_mse = ((video - dvae_recon) ** 2).sum() / (B * T)                      # 1
+        
+        # pretrain dvae only
+        if self.dvae_pretrain:
+            return (dvae_recon.clamp(0., 1.), dvae_mse)
+
+        # prepare dvae tokens for transformer
         z_hard = gumbel_softmax(z_logits, tau, True, dim=1).detach()         # B * T, vocab_size, H_enc, W_enc
         z_hard = z_hard.permute(0, 2, 3, 1).flatten(start_dim=1, end_dim=2)                         # B * T, H_enc * W_enc, vocab_size
         z_emb = self.steve_decoder.dict(z_hard)                                                     # B * T, H_enc * W_enc, d_model
         z_emb = torch.cat([self.steve_decoder.bos.expand(B * T, -1, -1), z_emb], dim=1)             # B * T, 1 + H_enc * W_enc, d_model
         z_emb = self.steve_decoder.pos(z_emb)                                                       # B * T, 1 + H_enc * W_enc, d_model
-
-        # dvae recon
-        dvae_recon = self.dvae.decoder(z_soft).reshape(B, T, C, H, W)               # B, T, C, H, W
-        dvae_mse = ((video - dvae_recon) ** 2).sum() / (B * T)                      # 1
 
         # savi
         emb = self.steve_encoder.cnn(video_flat)      # B * T, cnn_hidden_size, H, W
