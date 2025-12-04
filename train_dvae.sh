@@ -27,6 +27,7 @@ for dataset in c d e solid tex ; do
         --use_dp \
         --wandb_proj_sufix _dvae \
         --dvae_pretrain \
+done
 
 # Pretrain dvae on CaterTex
 echo "Start pre-training dvae on CaterTex"
