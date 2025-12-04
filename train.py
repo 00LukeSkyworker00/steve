@@ -444,7 +444,7 @@ for epoch in range(start_epoch, args.epochs):
         print('====> Best Loss = {:F} @ Epoch {}'.format(best_val_loss, best_epoch))
 
 if args.dvae_pretrain:
-    artifact_best = wandb.Artifact("best_dvae", type="model")
+    artifact_best = wandb.Artifact("best_dvae", type="dvae")
     artifact_ckpt = wandb.Artifact("ckpt_dvae", type="checkpoint")
 else:
     artifact_best = wandb.Artifact("best", type="model")

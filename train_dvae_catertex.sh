@@ -14,22 +14,6 @@ export WANDB_API_KEY=$(cat .wandb.txt)
 echo 'Enter STEVE repo...'
 cd ./workspace/uvos/steve/
 
-# Pretrain dvae on MOVi
-for dataset in c d e solid tex ; do
-    echo "Start pre-training dvae on $dataset"
-    python -u train.py \
-        --dataset "movi_$dataset" \
-        --data_path $DATA_DIR/movi/$dataset \
-        --dvae_dir $OUT_DIR/movi/$dataset/dvae \
-        --out_path $OUT_DIR/movi/$dataset \
-        --batch_size 72 \
-        --epochs 50 \
-        --steps 100000000 \
-        --use_dp \
-        --wandb_proj_sufix _dvae \
-        --dvae_pretrain
-done
-
 # Pretrain dvae on CaterTex
 echo "Start pre-training dvae on CaterTex"
 python -u train.py \
@@ -37,6 +21,7 @@ python -u train.py \
     --data_path $DATA_DIR/catertex \
     --dvae_dir $OUT_DIR/catertex/dvae \
     --out_path $OUT_DIR/catertex \
+    --batch_size 72 \
     --epochs 50 \
     --steps 100000000 \
     --use_dp \
