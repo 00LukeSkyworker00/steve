@@ -26,7 +26,7 @@ for dataset in c d e solid tex ; do
         --steps 100000000 \
         --use_dp \
         --wandb_proj_sufix _dvae \
-        --dvae_pretrain \
+        --dvae_pretrain
 done
 
 # Pretrain dvae on CaterTex
@@ -40,4 +40,4 @@ python -u train.py \
     --steps 100000000 \
     --use_dp \
     --wandb_proj_sufix _dvae \
-    --dvae_pretrain \
+    --dvae_pretrain
