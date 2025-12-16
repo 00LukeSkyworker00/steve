@@ -280,8 +280,12 @@ for epoch in range(start_epoch, args.epochs):
 
         val_cross_entropy = 0.
         val_mse = 0.
-        aris = 0.
-        fgaris = 0.
+
+        aris_img = 0.
+        aris_vid = 0.
+
+        fgaris_img = 0.
+        fgaris_vid = 0.
 
         for batch, (video, true_masks) in enumerate(val_loader):
             video = video.cuda()
@@ -289,15 +293,28 @@ for epoch in range(start_epoch, args.epochs):
             (recon, cross_entropy, mse, attns) = model(video, tau, args.hard)
             _, _, pred_masks = model.module.encode(video)
 
-            #compute ari
-            ari_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2),
-                                        pred_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2))
-            aris += ari_b
+            # Image ARI
+            aris_img_b = 100 * evaluate_ari(true_masks.flatten(0,1).flatten(2),
+                                           pred_masks.flatten(0,1).flatten(2))
+            aris_img += aris_img_b
 
-            # compute fg-ari by omit the BG segment i.e. the 0-th segment from the true masks as follows.
-            fgari_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5)[:, 1:].flatten(start_dim=2),
+            # Video ARI
+            aris_vid_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2),
                                         pred_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2))
-            fgaris += fgari_b
+            aris_vid += aris_vid_b
+
+            # omit the BG segment i.e. the 0-th segment from the true masks as follows.
+            true_masks:torch.Tensor = true_masks[:, :, 1:]  # (B, T, N_obj, C, H, W)
+
+            # Image FG-ARI
+            fgaris_img_b = 100 * evaluate_ari(true_masks.flatten(0,1).flatten(2),
+                                           pred_masks.flatten(0,1).flatten(2))
+            fgaris_img += fgaris_img_b
+
+            # Video FG-ARI
+            fgaris_vid_b = 100 * evaluate_ari(true_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2),
+                                        pred_masks.permute(0, 2, 1, 3, 4, 5).flatten(start_dim=2))
+            fgaris_vid += fgaris_vid_b
 
             if args.use_dp:
                 mse = mse.mean()
@@ -309,8 +326,10 @@ for epoch in range(start_epoch, args.epochs):
         val_cross_entropy /= (val_epoch_size)
         val_mse /= (val_epoch_size)
         
-        aris /= (val_epoch_size)
-        fgaris /= (val_epoch_size)
+        aris_img /= (val_epoch_size)
+        aris_vid /= (val_epoch_size)
+        fgaris_img /= (val_epoch_size)
+        fgaris_vid /= (val_epoch_size)
 
         val_loss = val_mse + val_cross_entropy
             
@@ -328,7 +347,7 @@ for epoch in range(start_epoch, args.epochs):
         seg_pred = viz_seg(pred_masks[::8][:log_samples])
         frames = visualize(video[::8], recon[::8], gen_video, seg_gt, seg_pred, attns[::8], N=log_samples)
 
-        print('====> Epoch: {:3} \t Loss: {:F} \t Ari: {:F} \t FG-Ari: {:F}'.format(epoch+1, val_loss, aris, fgaris))
+        print('====> Epoch: {:3} \t Loss: {:F} \t IMG_Ari: {:F} \t IMG_FG-Ari: {:F} \t VID_Ari: {:F} \t VID_FG-Ari: {:F}'.format(epoch+1, val_loss, aris_img, fgaris_img, aris_vid, fgaris_vid))
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -343,8 +362,10 @@ for epoch in range(start_epoch, args.epochs):
             "VAL/loss": val_loss,
             "VAL/cross_entropy": val_cross_entropy,
             "VAL/mse": val_mse,
-            "VAL/ari": aris,
-            "VAL/ari_fg": fgaris,
+            "VAL/ari_img": aris_img,
+            "VAL/ari": aris_vid,
+            "VAL/ari_fg_img": fgaris_img,
+            "VAL/ari_fg": fgaris_vid,
             "VAL/best_loss": best_val_loss,
             "VAL/recons": wandb.Video(frames.cpu()*255.0, fps=8, format="mp4"),
             "val_step": epoch+1,
@@ -353,8 +374,10 @@ for epoch in range(start_epoch, args.epochs):
         writer.add_scalar('VAL/loss', val_loss, epoch+1)
         writer.add_scalar('VAL/cross_entropy', val_cross_entropy, epoch+1)
         writer.add_scalar('VAL/mse', val_mse, epoch+1)
-        writer.add_scalar('VAL/ari', aris, epoch+1)
-        writer.add_scalar('VAL/ari_fg', fgaris, epoch+1)
+        writer.add_scalar('VAL/img_ari', aris_img, epoch+1)
+        writer.add_scalar('VAL/vid_ari', aris_vid, epoch+1)
+        writer.add_scalar('VAL/img_ari_fg', fgaris_img, epoch+1)
+        writer.add_scalar('VAL/vid_ari_fg', fgaris_vid, epoch+1)
         writer.add_scalar('VAL/best_loss', best_val_loss, epoch+1)
         writer.add_video('Recons/val', frames, epoch+1)
 
