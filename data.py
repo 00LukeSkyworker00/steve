@@ -2,6 +2,8 @@ import os
 import glob
 import torch
 
+import numpy as np
+
 from pathlib import Path
 from PIL import Image, ImageFile
 from torchvision import transforms
@@ -135,3 +137,29 @@ class GlobVideoDatasetWithMasks(Dataset):
         masks = torch.stack(masks, dim=0)
 
         return video, masks
+
+class FlowDataset(Dataset):
+    def __init__(self, root, load_mask=False):
+        self.root = root
+        self.total_files = sorted(glob.glob(os.path.join(root, '*.npz')))
+        self.load_mask = load_mask
+
+        self.transform = transforms.ToTensor()
+
+    def __len__(self):
+        return len(self.total_files)
+
+    def __getitem__(self, idx):
+        data = np.load(self.total_files[idx])
+        flow = torch.from_numpy(data['fwd'])  # (F, H, W, 2)
+        zeros = torch.zeros_like(flow[...,:1])
+        flow_vid = torch.cat([flow,zeros], dim=-1)  # (F, H, W, 3)
+        flow_vid = flow_vid.permute(0,3,1,2)  # (F, 3, H, W)
+        flow_vid = flow_vid[:21]  # (21, 3, H, W), drop nan in the end
+
+        if self.load_mask:
+            masks = torch.from_numpy(data['mask_gt']).bool()  # (F, obj, H, W, 1)
+            masks = masks.permute(0,1,4,2,3)[:21]  # (21, obj, 1, H, W), drop nan in the end
+            return flow_vid, masks
+        else:
+            return flow_vid
