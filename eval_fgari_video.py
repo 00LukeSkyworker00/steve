@@ -1,4 +1,4 @@
-import argparse
+import argparse, os
 import numpy as np
 
 import torch
@@ -46,8 +46,11 @@ args = parser.parse_args()
 
 torch.manual_seed(args.seed)
 
-eval_dataset = GlobVideoDatasetWithMasks(root=args.data_path, img_size=args.image_size, num_segs=args.data_num_segs_per_frame,
-                                        ep_len=args.ep_len, img_glob='????????_image.png')
+val_path = os.path.join(args.data_path, 'val', '*')
+val_dataset = GlobVideoDatasetWithMasks(
+    root=val_path, phase='', img_size=args.image_size,
+    ep_len=args.ep_len, img_glob='????????_image.png', mask_glob='????????_mask_??.png'
+)
 
 eval_sampler = None
 
@@ -59,7 +62,7 @@ loader_kwargs = {
     'drop_last': True,
 }
 
-eval_loader = DataLoader(eval_dataset, sampler=eval_sampler, **loader_kwargs)
+eval_loader = DataLoader(val_dataset, sampler=eval_sampler, **loader_kwargs)
 
 models = []
 for path in args.trained_model_paths:
