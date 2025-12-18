@@ -16,7 +16,7 @@ cd ./workspace/uvos/steve/
 
 # Train
 echo 'Start pre-training STEVE on Movi-flow'
-python -u train.py \
+python -u train_flow.py \
     --dataset movi_flow \
     --data_path $DATA_DIR/movi/flow \
     --out_path $OUT_DIR/movi/flow \
