@@ -282,6 +282,7 @@ for epoch in range(start_epoch, args.epochs):
             video = video.cuda()
             B, T, C, H, W = video.shape
             video = video.view(B * frame_chunk, args.ep_len, C, H, W)
+            true_masks = true_masks.view(B * frame_chunk, args.ep_len, -1, 1, H, W)
 
             (recon, cross_entropy, mse, attns) = model(video, tau, args.hard)
             _, _, pred_masks = model.module.encode(video)
