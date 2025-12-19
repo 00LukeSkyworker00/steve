@@ -141,24 +141,27 @@ class GlobVideoDatasetWithMasks(Dataset):
 class FlowDataset(Dataset):
     def __init__(self, root, load_mask=False):
         self.root = root
-        self.total_files = sorted(glob.glob(os.path.join(root, '*.npz')))
+        self.total_dirs = sorted(glob.glob(os.path.join(root, "*")))
         self.load_mask = load_mask
 
         self.transform = transforms.ToTensor()
 
     def __len__(self):
-        return len(self.total_files)
+        return len(self.total_dirs)
 
     def __getitem__(self, idx):
-        data = np.load(self.total_files[idx])
-        flow = torch.from_numpy(data['fwd'])  # (F, H, W, 2)
+        flow_path = os.path.join(self.total_dirs[idx], 'fwd.npy')
+        flow = np.load(flow_path, mmap_mode="r")
+        flow = torch.from_numpy(flow)  # (F, H, W, 2)
         zeros = torch.zeros_like(flow[...,:1])
         flow_vid = torch.cat([flow,zeros], dim=-1)  # (F, H, W, 3)
         flow_vid = flow_vid.permute(0,3,1,2)  # (F, 3, H, W)
         flow_vid = flow_vid[:21]  # (21, 3, H, W), drop nan in the end
 
         if self.load_mask:
-            masks = torch.from_numpy(data['mask_gt']).bool().float()  # (F, obj, H, W, 1)
+            mask_path = os.path.join(self.total_dirs[idx], 'mask_gt.npy')
+            masks = np.load(mask_path, mmap_mode="r")
+            masks = torch.from_numpy(masks).bool().float()  # (F, obj, H, W, 1)
             masks = masks.permute(0,1,4,2,3)[:21]  # (21, obj, 1, H, W), drop nan in the end
             return flow_vid, masks
         else:
