@@ -158,7 +158,7 @@ class FlowDataset(Dataset):
         flow_vid = flow_vid[:21]  # (21, 3, H, W), drop nan in the end
 
         if self.load_mask:
-            masks = torch.from_numpy(data['mask_gt']).bool()  # (F, obj, H, W, 1)
+            masks = torch.from_numpy(data['mask_gt']).bool().float()  # (F, obj, H, W, 1)
             masks = masks.permute(0,1,4,2,3)[:21]  # (21, obj, 1, H, W), drop nan in the end
             return flow_vid, masks
         else:
