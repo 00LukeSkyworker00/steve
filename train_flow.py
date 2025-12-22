@@ -175,6 +175,7 @@ def visualize(video:torch.Tensor, recon_dvae:torch.Tensor, recon_tf:torch.Tensor
 
     tiles = torch.cat((video, recon_dvae, recon_tf, seg_gt, seg_pred, attns), dim=2)  # (N, T, (S+5), C, H, W)
     tiles = tiles[:,:,:,:3]
+    C = 3
     tiles = tiles.permute(0,2,1,3,4,5).reshape(-1,T*C,H,W)  # (N*(S+5), T*C, H, W)
     
     frames = vutils.make_grid(tiles, nrow=(5), pad_value=0.8)  # (T*C, H', W')
