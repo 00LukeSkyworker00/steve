@@ -173,8 +173,7 @@ def visualize(video:torch.Tensor, recon_dvae:torch.Tensor, recon_tf:torch.Tensor
         empty_attns = torch.ones_like(attns[:,:,:1].repeat(1,1,5-num_slot_modulo,1,1,1))
         attns = torch.cat([attns, empty_attns*0.5], dim=2)
 
-    tiles = torch.cat((video, recon_dvae, recon_tf, seg_gt, seg_pred, attns), dim=2)  # (N, T, (S+5), C, H, W)
-    tiles = tiles[:,:,:,:3]
+    tiles = torch.cat((video[:,:,:,:3], recon_dvae[:,:,:,:3], recon_tf[:,:,:,:3], seg_gt, seg_pred, attns[:,:,:,:3]), dim=2)  # (N, T, (S+5), C, H, W)
     C = 3
     tiles = tiles.permute(0,2,1,3,4,5).reshape(-1,T*C,H,W)  # (N*(S+5), T*C, H, W)
     
