@@ -150,13 +150,18 @@ class FlowDataset(Dataset):
         return len(self.total_dirs)
 
     def __getitem__(self, idx):
+        vid_path = os.path.join(self.total_dirs[idx], 'vid.npy')
+        vid = np.load(vid_path, mmap_mode="r")
+        vid = torch.from_numpy(vid)  # (F, H, W, 3)
+        vid = vid[:21]  # (21, H, W, 3), drop nan in the end
+
         flow_path = os.path.join(self.total_dirs[idx], 'fwd.npy')
         flow = np.load(flow_path, mmap_mode="r")
         flow = torch.from_numpy(flow)  # (F, H, W, 2)
-        zeros = torch.zeros_like(flow[...,:1])
-        flow_vid = torch.cat([flow,zeros], dim=-1)  # (F, H, W, 3)
-        flow_vid = flow_vid.permute(0,3,1,2)  # (F, 3, H, W)
-        flow_vid = flow_vid[:21]  # (21, 3, H, W), drop nan in the end
+        flow = flow[:21]  # (21, H, W, 2), drop nan in the end
+
+        flow_vid = torch.cat([vid,flow], dim=-1)  # (21, H, W, 5)
+        flow_vid = flow_vid.permute(0,3,1,2)  # (F, 5, H, W)
 
         if self.load_mask:
             mask_path = os.path.join(self.total_dirs[idx], 'mask_gt.npy')
