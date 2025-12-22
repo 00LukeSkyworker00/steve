@@ -30,7 +30,7 @@ parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--batch_size', type=int, default=24)
 parser.add_argument('--num_workers', type=int, default=4)
 parser.add_argument('--image_size', type=int, default=128)
-parser.add_argument('--img_channels', type=int, default=3)
+parser.add_argument('--img_channels', type=int, default=5)
 parser.add_argument('--ep_len', type=int, default=3)
 
 parser.add_argument('--checkpoint_path', default='checkpoint.pt.tar')
@@ -174,6 +174,7 @@ def visualize(video:torch.Tensor, recon_dvae:torch.Tensor, recon_tf:torch.Tensor
         attns = torch.cat([attns, empty_attns*0.5], dim=2)
 
     tiles = torch.cat((video, recon_dvae, recon_tf, seg_gt, seg_pred, attns), dim=2)  # (N, T, (S+5), C, H, W)
+    tiles = tiles[:,:,:,:3]
     tiles = tiles.permute(0,2,1,3,4,5).reshape(-1,T*C,H,W)  # (N*(S+5), T*C, H, W)
     
     frames = vutils.make_grid(tiles, nrow=(5), pad_value=0.8)  # (T*C, H', W')
