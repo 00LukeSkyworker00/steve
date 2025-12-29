@@ -159,6 +159,8 @@ class FlowDataset(Dataset):
         flow = np.load(flow_path, mmap_mode="r")
         flow = torch.from_numpy(flow)  # (F, H, W, 2)
         flow = flow[:21]  # (21, H, W, 2), drop nan in the end
+        H, W = vid.shape[1], vid.shape[2]
+        flow = flow / torch.tensor([H, W]).view(1,1,1,2)  # normalize flow to [-1,1]
 
         flow_vid = torch.cat([vid,flow], dim=-1)  # (21, H, W, 5)
         flow_vid = flow_vid.permute(0,3,1,2)  # (F, 5, H, W)
