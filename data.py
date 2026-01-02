@@ -139,10 +139,11 @@ class GlobVideoDatasetWithMasks(Dataset):
         return video, masks
 
 class FlowDataset(Dataset):
-    def __init__(self, root, load_mask=False):
+    def __init__(self, root, load_mask=False, train_without_flow=False):
         self.root = root
         self.total_dirs = sorted(glob.glob(os.path.join(root, "*")))
         self.load_mask = load_mask
+        self.train_without_flow = train_without_flow
 
         self.transform = transforms.ToTensor()
 
@@ -155,21 +156,24 @@ class FlowDataset(Dataset):
         vid = torch.from_numpy(vid)  # (F, H, W, 3)
         vid = vid[:21]  # (21, H, W, 3), drop nan in the end
 
-        flow_path = os.path.join(self.total_dirs[idx], 'fwd.npy')
-        flow = np.load(flow_path, mmap_mode="r")
-        flow = torch.from_numpy(flow)  # (F, H, W, 2)
-        flow = flow[:21]  # (21, H, W, 2), drop nan in the end
-        H, W = vid.shape[1], vid.shape[2]
-        flow = flow / torch.tensor([H, W]).view(1,1,1,2)  # normalize flow to [-1,1]
+        if self.train_without_flow:
+            out_vid = vid.permute(0,3,1,2)  # (F, 3, H, W)
+        else:
+            flow_path = os.path.join(self.total_dirs[idx], 'fwd.npy')
+            flow = np.load(flow_path, mmap_mode="r")
+            flow = torch.from_numpy(flow)  # (F, H, W, 2)
+            flow = flow[:21]  # (21, H, W, 2), drop nan in the end
+            H, W = vid.shape[1], vid.shape[2]
+            flow = flow / torch.tensor([H, W]).view(1,1,1,2)  # normalize flow to [-1,1]
 
-        flow_vid = torch.cat([vid,flow], dim=-1)  # (21, H, W, 5)
-        flow_vid = flow_vid.permute(0,3,1,2)  # (F, 5, H, W)
+            out_vid = torch.cat([vid,flow], dim=-1)  # (21, H, W, 5)
+            out_vid = out_vid.permute(0,3,1,2)  # (F, 5, H, W)
 
         if self.load_mask:
             mask_path = os.path.join(self.total_dirs[idx], 'mask_gt.npy')
             masks = np.load(mask_path, mmap_mode="r")
             masks = torch.from_numpy(masks).bool().float()  # (F, obj, H, W, 1)
             masks = masks.permute(0,1,4,2,3)[:21]  # (21, obj, 1, H, W), drop nan in the end
-            return flow_vid, masks
+            return out_vid, masks
         else:
-            return flow_vid
+            return out_vid

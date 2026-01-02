@@ -70,7 +70,15 @@ parser.add_argument('--tau_steps', type=int, default=30000)
 parser.add_argument('--hard', action='store_true')
 parser.add_argument('--use_dp', default=True, action='store_true')
 
+parser.add_argument('--train_without_flow', action='store_true')
+
 args = parser.parse_args()
+
+if args.train_without_flow:
+    args.img_channels = 3
+else:
+    args.img_channels = 5
+
 
 torch.manual_seed(args.seed)
 
@@ -100,8 +108,8 @@ writer.add_text('hparams', arg_str)
 train_path = os.path.join(args.data_path, 'train')
 val_path = os.path.join(args.data_path, 'val')
 
-train_dataset = FlowDataset(root=train_path)
-val_dataset = FlowDataset(root=val_path, load_mask=True)
+train_dataset = FlowDataset(root=train_path, train_without_flow=args.train_without_flow)
+val_dataset = FlowDataset(root=val_path, load_mask=True, train_without_flow=args.train_without_flow)
 
 frame_chunk = 21 // args.ep_len
 
