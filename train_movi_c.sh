@@ -1,6 +1,6 @@
 #!/bin/bash
 DATA_DIR=/work/skyworker0/data/uvos
-OUT_DIR=/home/skyworker0/workspace/uvos/result
+OUT_DIR=/home/skyworker0/workspace/uvos/result/round_0_steve
 
 # Install packages
 pip install moviepy
